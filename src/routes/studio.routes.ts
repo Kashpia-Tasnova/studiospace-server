@@ -1,3 +1,4 @@
+
 import { Router } from "express";
 import { ObjectId } from "mongodb";
 import { getDB } from "../db";
@@ -25,6 +26,33 @@ router.get("/", async (req, res) => {
     res.status(500).json({
       success: false,
       message: "Failed to retrieve studios",
+    });
+  }
+});
+
+// GET the 6 newest available studios for the homepage
+router.get("/featured", async (req, res) => {
+  try {
+    const db = getDB();
+
+    const studios = await db
+      .collection("studios")
+      .find({ status: "available" })
+      .sort({ createdAt: -1, _id: -1 })
+      .limit(6)
+      .toArray();
+
+    res.status(200).json({
+      success: true,
+      message: "Featured studios retrieved successfully",
+      data: studios,
+    });
+  } catch (error) {
+    console.error("Error fetching featured studios:", error);
+
+    res.status(500).json({
+      success: false,
+      message: "Failed to retrieve featured studios",
     });
   }
 });
@@ -82,6 +110,7 @@ router.post("/", async (req, res) => {
       price,
       capacity,
       status,
+      rating,
     } = req.body;
 
     if (
@@ -112,6 +141,17 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    if (
+      rating !== undefined &&
+      (typeof rating !== "number" || rating < 0 || rating > 5)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Rating must be a number between 0 and 5",
+      });
+      return;
+    }
+
     const db = getDB();
 
     const newStudio = {
@@ -122,6 +162,7 @@ router.post("/", async (req, res) => {
       price,
       capacity,
       status: status || "available",
+      ...(rating !== undefined && { rating }),
       createdAt: new Date(),
     };
 
@@ -166,6 +207,7 @@ router.put("/:id", async (req, res) => {
       price,
       capacity,
       status,
+      rating,
     } = req.body;
 
     const updateData: Record<string, unknown> = {};
@@ -177,6 +219,7 @@ router.put("/:id", async (req, res) => {
     if (price !== undefined) updateData.price = price;
     if (capacity !== undefined) updateData.capacity = capacity;
     if (status !== undefined) updateData.status = status;
+    if (rating !== undefined) updateData.rating = rating;
 
     if (Object.keys(updateData).length === 0) {
       res.status(400).json({
@@ -195,6 +238,17 @@ router.put("/:id", async (req, res) => {
       res.status(400).json({
         success: false,
         message: "Price and capacity must be positive numbers",
+      });
+      return;
+    }
+
+    if (
+      rating !== undefined &&
+      (typeof rating !== "number" || rating < 0 || rating > 5)
+    ) {
+      res.status(400).json({
+        success: false,
+        message: "Rating must be a number between 0 and 5",
       });
       return;
     }
@@ -270,4 +324,5 @@ router.delete("/:id", async (req, res) => {
     });
   }
 });
+
 export default router;
