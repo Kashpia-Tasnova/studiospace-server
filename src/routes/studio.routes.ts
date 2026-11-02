@@ -5,15 +5,40 @@ import { getDB } from "../db";
 
 const router = Router();
 
+// Validate an array containing only non-empty strings
+function isStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) &&
+    value.every(
+      (item) => typeof item === "string" && item.trim().length > 0
+    )
+  );
+}
+
+// Validate host information
+function isValidHost(value: unknown): boolean {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+
+  const host = value as Record<string, unknown>;
+
+  return (
+    typeof host.name === "string" &&
+    host.name.trim().length > 0 &&
+    typeof host.email === "string" &&
+    host.email.trim().length > 0 &&
+    (host.profileImage === undefined ||
+      typeof host.profileImage === "string")
+  );
+}
+
 // GET all studio listings
 router.get("/", async (req, res) => {
   try {
     const db = getDB();
 
-    const studios = await db
-      .collection("studios")
-      .find({})
-      .toArray();
+    const studios = await db.collection("studios").find({}).toArray();
 
     res.status(200).json({
       success: true,
@@ -111,6 +136,9 @@ router.post("/", async (req, res) => {
       capacity,
       status,
       rating,
+      images,
+      amenities,
+      host,
     } = req.body;
 
     if (
@@ -152,6 +180,30 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    if (images !== undefined && !isStringArray(images)) {
+      res.status(400).json({
+        success: false,
+        message: "Images must be an array of non-empty URLs",
+      });
+      return;
+    }
+
+    if (amenities !== undefined && !isStringArray(amenities)) {
+      res.status(400).json({
+        success: false,
+        message: "Amenities must be an array of non-empty strings",
+      });
+      return;
+    }
+
+    if (host !== undefined && !isValidHost(host)) {
+      res.status(400).json({
+        success: false,
+        message: "Please provide valid host information",
+      });
+      return;
+    }
+
     const db = getDB();
 
     const newStudio = {
@@ -163,6 +215,9 @@ router.post("/", async (req, res) => {
       capacity,
       status: status || "available",
       ...(rating !== undefined && { rating }),
+      ...(images !== undefined && { images }),
+      ...(amenities !== undefined && { amenities }),
+      ...(host !== undefined && { host }),
       createdAt: new Date(),
     };
 
@@ -208,6 +263,10 @@ router.put("/:id", async (req, res) => {
       capacity,
       status,
       rating,
+      createdAt,
+      images,
+      amenities,
+      host,
     } = req.body;
 
     const updateData: Record<string, unknown> = {};
@@ -220,6 +279,60 @@ router.put("/:id", async (req, res) => {
     if (capacity !== undefined) updateData.capacity = capacity;
     if (status !== undefined) updateData.status = status;
     if (rating !== undefined) updateData.rating = rating;
+
+    // Update creation date
+    if (createdAt !== undefined) {
+      const parsedDate = new Date(createdAt);
+
+      if (Number.isNaN(parsedDate.getTime())) {
+        res.status(400).json({
+          success: false,
+          message: "Please provide a valid creation date",
+        });
+        return;
+      }
+
+      updateData.createdAt = parsedDate;
+    }
+
+    // Update unlimited studio images
+    if (images !== undefined) {
+      if (!isStringArray(images)) {
+        res.status(400).json({
+          success: false,
+          message: "Images must be an array of non-empty URLs",
+        });
+        return;
+      }
+
+      updateData.images = images;
+    }
+
+    // Update studio amenities
+    if (amenities !== undefined) {
+      if (!isStringArray(amenities)) {
+        res.status(400).json({
+          success: false,
+          message: "Amenities must be an array of non-empty strings",
+        });
+        return;
+      }
+
+      updateData.amenities = amenities;
+    }
+
+    // Update host information
+    if (host !== undefined) {
+      if (!isValidHost(host)) {
+        res.status(400).json({
+          success: false,
+          message: "Please provide valid host information",
+        });
+        return;
+      }
+
+      updateData.host = host;
+    }
 
     if (Object.keys(updateData).length === 0) {
       res.status(400).json({

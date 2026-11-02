@@ -2,13 +2,14 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+
 import { connectDB } from "./db";
+import { createAuth } from "./auth";
 import studioRoutes from "./routes/studio.routes";
 
 dotenv.config();
 
 const app = express();
-
 const PORT = process.env.PORT || 5000;
 
 app.use(
@@ -18,8 +19,6 @@ app.use(
   })
 );
 
-app.use(express.json());
-
 // Welcome route
 app.get("/", (req, res) => {
   res.status(200).json({
@@ -28,15 +27,25 @@ app.get("/", (req, res) => {
   });
 });
 
-// Studios API routes
-app.use("/api/studios", studioRoutes);
-
 async function startServer() {
   try {
     await connectDB();
 
+    const auth = await createAuth();
+
+    const { toNodeHandler } = await import("better-auth/node");
+
+    // Better Auth must be mounted before express.json()
+    app.all("/api/auth/*splat", toNodeHandler(auth));
+
+    app.use(express.json());
+
+    // Existing Studios API
+    app.use("/api/studios", studioRoutes);
+
     app.listen(PORT, () => {
       console.log(`StudioSpace API is running on http://localhost:${PORT}`);
+      console.log("Better Auth is ready!");
     });
   } catch (error) {
     console.error("Failed to start StudioSpace server:", error);
