@@ -17,7 +17,7 @@ export async function createAuth() {
 
     emailAndPassword: {
       enabled: true,
-      minPasswordLength: 8,
+      minPasswordLength: 6,
     },
 
     socialProviders: {
