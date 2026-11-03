@@ -133,6 +133,7 @@ router.post("/", async (req, res) => {
       category,
       location,
       price,
+      securityDeposit,
       capacity,
       status,
       rating,
@@ -141,12 +142,14 @@ router.post("/", async (req, res) => {
       host,
     } = req.body;
 
+    // Check required fields
     if (
       !name ||
       !description ||
       !category ||
       !location ||
       price === undefined ||
+      securityDeposit === undefined ||
       capacity === undefined
     ) {
       res.status(400).json({
@@ -156,19 +159,24 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Validate price, security deposit, and capacity
     if (
       typeof price !== "number" ||
+      typeof securityDeposit !== "number" ||
       typeof capacity !== "number" ||
       price <= 0 ||
+      securityDeposit < 0 ||
       capacity <= 0
     ) {
       res.status(400).json({
         success: false,
-        message: "Price and capacity must be positive numbers",
+        message:
+          "Price and capacity must be positive numbers, and security deposit cannot be negative",
       });
       return;
     }
 
+    // Validate rating
     if (
       rating !== undefined &&
       (typeof rating !== "number" || rating < 0 || rating > 5)
@@ -180,6 +188,7 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Validate images
     if (images !== undefined && !isStringArray(images)) {
       res.status(400).json({
         success: false,
@@ -188,6 +197,7 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Validate amenities
     if (amenities !== undefined && !isStringArray(amenities)) {
       res.status(400).json({
         success: false,
@@ -196,6 +206,7 @@ router.post("/", async (req, res) => {
       return;
     }
 
+    // Validate host
     if (host !== undefined && !isValidHost(host)) {
       res.status(400).json({
         success: false,
@@ -212,6 +223,7 @@ router.post("/", async (req, res) => {
       category,
       location,
       price,
+      securityDeposit,
       capacity,
       status: status || "available",
       ...(rating !== undefined && { rating }),
@@ -260,6 +272,7 @@ router.put("/:id", async (req, res) => {
       category,
       location,
       price,
+      securityDeposit,
       capacity,
       status,
       rating,
@@ -276,6 +289,11 @@ router.put("/:id", async (req, res) => {
     if (category !== undefined) updateData.category = category;
     if (location !== undefined) updateData.location = location;
     if (price !== undefined) updateData.price = price;
+
+    if (securityDeposit !== undefined) {
+      updateData.securityDeposit = securityDeposit;
+    }
+
     if (capacity !== undefined) updateData.capacity = capacity;
     if (status !== undefined) updateData.status = status;
     if (rating !== undefined) updateData.rating = rating;
@@ -295,7 +313,7 @@ router.put("/:id", async (req, res) => {
       updateData.createdAt = parsedDate;
     }
 
-    // Update unlimited studio images
+    // Update studio images
     if (images !== undefined) {
       if (!isStringArray(images)) {
         res.status(400).json({
@@ -334,6 +352,7 @@ router.put("/:id", async (req, res) => {
       updateData.host = host;
     }
 
+    // Check if there is anything to update
     if (Object.keys(updateData).length === 0) {
       res.status(400).json({
         success: false,
@@ -342,19 +361,24 @@ router.put("/:id", async (req, res) => {
       return;
     }
 
+    // Validate price, security deposit, and capacity
     if (
       (price !== undefined &&
         (typeof price !== "number" || price <= 0)) ||
+      (securityDeposit !== undefined &&
+        (typeof securityDeposit !== "number" || securityDeposit < 0)) ||
       (capacity !== undefined &&
         (typeof capacity !== "number" || capacity <= 0))
     ) {
       res.status(400).json({
         success: false,
-        message: "Price and capacity must be positive numbers",
+        message:
+          "Price and capacity must be positive numbers, and security deposit cannot be negative",
       });
       return;
     }
 
+    // Validate rating
     if (
       rating !== undefined &&
       (typeof rating !== "number" || rating < 0 || rating > 5)
