@@ -7,12 +7,14 @@ import { connectDB } from "./db";
 import { createAuth } from "./auth";
 import { createStudioRouter } from "./routes/studio.routes";
 import { createUploadRouter } from "./routes/upload.routes";
+import { createBookingRouter } from "./routes/booking.routes";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// CORS configuration
 app.use(
   cors({
     origin: "http://localhost:3000",
@@ -30,8 +32,10 @@ app.get("/", (req, res) => {
 
 async function startServer() {
   try {
+    // Connect to MongoDB
     await connectDB();
 
+    // Initialize Better Auth
     const auth = await createAuth();
 
     const { toNodeHandler } = await import("better-auth/node");
@@ -39,6 +43,7 @@ async function startServer() {
     // Better Auth must be mounted before express.json()
     app.all("/api/auth/*splat", toNodeHandler(auth));
 
+    // Parse incoming JSON requests
     app.use(express.json());
 
     // Studio routes with Better Auth session verification
@@ -47,9 +52,16 @@ async function startServer() {
     // Image upload routes with Better Auth session verification
     app.use("/api/upload", createUploadRouter(auth));
 
+    // Booking routes with Better Auth session verification
+    app.use("/api/bookings", createBookingRouter(auth));
+
+    // Start Express server
     app.listen(PORT, () => {
       console.log(`StudioSpace API is running on http://localhost:${PORT}`);
       console.log("Better Auth is ready!");
+      console.log("Studio routes are ready!");
+      console.log("Upload routes are ready!");
+      console.log("Booking routes are ready!");
     });
   } catch (error) {
     console.error("Failed to start StudioSpace server:", error);
