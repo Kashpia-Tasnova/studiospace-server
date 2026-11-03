@@ -5,8 +5,8 @@ import dotenv from "dotenv";
 
 import { connectDB } from "./db";
 import { createAuth } from "./auth";
-import studioRoutes from "./routes/studio.routes";
-import uploadRoutes from "./routes/upload.routes";
+import { createStudioRouter } from "./routes/studio.routes";
+import { createUploadRouter } from "./routes/upload.routes";
 
 dotenv.config();
 
@@ -41,8 +41,12 @@ async function startServer() {
 
     app.use(express.json());
 
-    app.use("/api/studios", studioRoutes);
-    app.use("/api/upload", uploadRoutes);
+    // Studio routes with Better Auth session verification
+    app.use("/api/studios", createStudioRouter(auth));
+
+    // Image upload routes with Better Auth session verification
+    app.use("/api/upload", createUploadRouter(auth));
+
     app.listen(PORT, () => {
       console.log(`StudioSpace API is running on http://localhost:${PORT}`);
       console.log("Better Auth is ready!");
