@@ -6,6 +6,7 @@ import dotenv from "dotenv";
 import { connectDB } from "./db";
 import { createAuth } from "./auth";
 import studioRoutes from "./routes/studio.routes";
+import uploadRoutes from "./routes/upload.routes";
 
 dotenv.config();
 
@@ -40,9 +41,8 @@ async function startServer() {
 
     app.use(express.json());
 
-    // Existing Studios API
     app.use("/api/studios", studioRoutes);
-
+    app.use("/api/upload", uploadRoutes);
     app.listen(PORT, () => {
       console.log(`StudioSpace API is running on http://localhost:${PORT}`);
       console.log("Better Auth is ready!");
