@@ -107,14 +107,17 @@ export function createBookingRouter(auth: Auth) {
         day: "2-digit",
       }).formatToParts(new Date());
 
-      const todayYear =
-        dateParts.find((part) => part.type === "year")?.value;
+      const todayYear = dateParts.find(
+        (part) => part.type === "year"
+      )?.value;
 
-      const todayMonth =
-        dateParts.find((part) => part.type === "month")?.value;
+      const todayMonth = dateParts.find(
+        (part) => part.type === "month"
+      )?.value;
 
-      const todayDay =
-        dateParts.find((part) => part.type === "day")?.value;
+      const todayDay = dateParts.find(
+        (part) => part.type === "day"
+      )?.value;
 
       const todayString = `${todayYear}-${todayMonth}-${todayDay}`;
 
@@ -308,7 +311,7 @@ export function createBookingRouter(auth: Auth) {
         data: bookings,
       });
     } catch (error) {
-      console.error("Error fetching bookings:", error);
+      console.error("Error fetching customer bookings:", error);
 
       res.status(500).json({
         success: false,
@@ -317,7 +320,162 @@ export function createBookingRouter(auth: Auth) {
     }
   });
 
-  // Cancel a pending booking belonging to the logged-in customer
+  // Get bookings for studios owned by the logged-in host
+  router.get("/host-bookings", requireAuth, async (req, res) => {
+    try {
+      const db = getDB();
+      const user = res.locals.user;
+
+      const bookings = await db
+        .collection("bookings")
+        .find({ ownerId: user.id })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.status(200).json({
+        success: true,
+        message: "Host bookings retrieved successfully",
+        data: bookings,
+      });
+    } catch (error) {
+      console.error("Error fetching host bookings:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to retrieve host bookings",
+      });
+    }
+  });
+
+  // Host updates a booking's status
+  router.patch("/:id/status", requireAuth, async (req, res) => {
+    try {
+      const id = req.params.id;
+      const { status } = req.body;
+
+      if (typeof id !== "string" || !ObjectId.isValid(id)) {
+        res.status(400).json({
+          success: false,
+          message: "Invalid booking ID",
+        });
+        return;
+      }
+
+      if (
+        typeof status !== "string" ||
+        !["Confirmed", "Completed", "Cancelled"].includes(status)
+      ) {
+        res.status(400).json({
+          success: false,
+          message: "Please provide a valid booking status",
+        });
+        return;
+      }
+
+      const db = getDB();
+      const user = res.locals.user;
+      const bookingId = new ObjectId(id);
+
+      // Find the booking
+      const booking = await db.collection("bookings").findOne({
+        _id: bookingId,
+      });
+
+      if (!booking) {
+        res.status(404).json({
+          success: false,
+          message: "Booking not found",
+        });
+        return;
+      }
+
+      // Only the owner of the studio can update the booking
+      if (booking.ownerId !== user.id) {
+        res.status(403).json({
+          success: false,
+          message: "You are not authorized to manage this booking",
+        });
+        return;
+      }
+
+      // Define allowed status transitions
+      let allowedCurrentStatuses: string[] = [];
+
+      if (status === "Confirmed") {
+        allowedCurrentStatuses = ["Pending"];
+      } else if (status === "Completed") {
+        allowedCurrentStatuses = ["Confirmed"];
+      } else if (status === "Cancelled") {
+        allowedCurrentStatuses = ["Pending", "Confirmed"];
+      }
+
+      if (!allowedCurrentStatuses.includes(booking.status)) {
+        res.status(400).json({
+          success: false,
+          message: `A booking with status ${booking.status} cannot be changed to ${status}`,
+        });
+        return;
+      }
+
+      const updateFields: Record<string, unknown> = {
+        status,
+        updatedAt: new Date(),
+      };
+
+      if (status === "Cancelled") {
+        updateFields.cancelledAt = new Date();
+        updateFields.cancelledBy = "host";
+      }
+
+      if (status === "Confirmed") {
+        updateFields.confirmedAt = new Date();
+      }
+
+      if (status === "Completed") {
+        updateFields.completedAt = new Date();
+      }
+
+      // Update only if the booking still has an allowed current status
+      const result = await db.collection("bookings").updateOne(
+        {
+          _id: bookingId,
+          ownerId: user.id,
+          status: { $in: allowedCurrentStatuses },
+        },
+        {
+          $set: updateFields,
+        }
+      );
+
+      if (result.matchedCount === 0) {
+        res.status(409).json({
+          success: false,
+          message:
+            "This booking has already been updated. Please refresh and try again.",
+        });
+        return;
+      }
+
+      const updatedBooking = await db.collection("bookings").findOne({
+        _id: bookingId,
+      });
+
+      res.status(200).json({
+        success: true,
+        message: `Booking ${status.toLowerCase()} successfully`,
+        data: updatedBooking,
+      });
+    } catch (error) {
+      console.error("Error updating booking status:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to update booking status",
+      });
+    }
+  });
+
+  // Customer cancels their own Pending, Confirmed, or Completed booking
   router.patch("/:id/cancel", requireAuth, async (req, res) => {
     try {
       const id = req.params.id;
@@ -332,24 +490,29 @@ export function createBookingRouter(auth: Auth) {
 
       const db = getDB();
       const user = res.locals.user;
+      const bookingId = new ObjectId(id);
 
       const result = await db.collection("bookings").updateOne(
         {
-          _id: new ObjectId(id),
+          _id: bookingId,
           customerId: user.id,
-          status: "Pending",
+          status: {
+            $in: ["Pending", "Confirmed", "Completed"],
+          },
         },
         {
           $set: {
             status: "Cancelled",
             cancelledAt: new Date(),
+            cancelledBy: "customer",
+            updatedAt: new Date(),
           },
         }
       );
 
       if (result.matchedCount === 0) {
         const booking = await db.collection("bookings").findOne({
-          _id: new ObjectId(id),
+          _id: bookingId,
         });
 
         if (!booking) {
@@ -370,7 +533,7 @@ export function createBookingRouter(auth: Auth) {
 
         res.status(400).json({
           success: false,
-          message: "Only pending bookings can be cancelled",
+          message: "This booking has already been cancelled",
         });
         return;
       }
