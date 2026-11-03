@@ -101,6 +101,33 @@ export function createStudioRouter(auth: Auth) {
     }
   });
 
+  // GET all studio listings belonging to the logged-in user
+  router.get("/my-listings", requireAuth, async (req, res) => {
+    try {
+      const user = res.locals.user;
+      const db = getDB();
+
+      const studios = await db
+        .collection("studios")
+        .find({ ownerId: user.id })
+        .sort({ createdAt: -1 })
+        .toArray();
+
+      res.status(200).json({
+        success: true,
+        message: "Your studio listings retrieved successfully",
+        data: studios,
+      });
+    } catch (error) {
+      console.error("Error fetching user's studio listings:", error);
+
+      res.status(500).json({
+        success: false,
+        message: "Failed to retrieve your studio listings",
+      });
+    }
+  });
+
   // GET a single studio by ID
   router.get("/:id", async (req, res) => {
     try {
