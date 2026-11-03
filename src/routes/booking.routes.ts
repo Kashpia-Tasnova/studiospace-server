@@ -45,8 +45,15 @@ export function createBookingRouter(auth: Auth) {
   // Create a booking
   router.post("/", requireAuth, async (req, res) => {
     try {
-      const { studioId, bookingDate, startTime, endTime, guests } = req.body;
+      const {
+        studioId,
+        bookingDate,
+        startTime,
+        endTime,
+        guests,
+      } = req.body;
 
+      // Validate required booking information
       if (
         typeof studioId !== "string" ||
         !ObjectId.isValid(studioId) ||
@@ -62,12 +69,28 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
-      // Validate date
-      const date = new Date(`${bookingDate}T00:00:00`);
+      // Validate booking date without UTC timezone conversion
+      const datePattern = /^(\d{4})-(\d{2})-(\d{2})$/;
+      const dateMatch = datePattern.exec(bookingDate);
+
+      if (!dateMatch) {
+        res.status(400).json({
+          success: false,
+          message: "Please provide a valid booking date",
+        });
+        return;
+      }
+
+      const year = Number(dateMatch[1]);
+      const month = Number(dateMatch[2]);
+      const day = Number(dateMatch[3]);
+
+      const validDate = new Date(Date.UTC(year, month - 1, day));
 
       if (
-        Number.isNaN(date.getTime()) ||
-        date.toISOString().slice(0, 10) !== bookingDate
+        validDate.getUTCFullYear() !== year ||
+        validDate.getUTCMonth() !== month - 1 ||
+        validDate.getUTCDate() !== day
       ) {
         res.status(400).json({
           success: false,
@@ -76,10 +99,26 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
+      // Get today's date in Bangladesh timezone
+      const dateParts = new Intl.DateTimeFormat("en-US", {
+        timeZone: "Asia/Dhaka",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).formatToParts(new Date());
 
-      if (date < today) {
+      const todayYear =
+        dateParts.find((part) => part.type === "year")?.value;
+
+      const todayMonth =
+        dateParts.find((part) => part.type === "month")?.value;
+
+      const todayDay =
+        dateParts.find((part) => part.type === "day")?.value;
+
+      const todayString = `${todayYear}-${todayMonth}-${todayDay}`;
+
+      if (bookingDate < todayString) {
         res.status(400).json({
           success: false,
           message: "Booking date cannot be in the past",
@@ -90,7 +129,10 @@ export function createBookingRouter(auth: Auth) {
       // Validate time format
       const timePattern = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
-      if (!timePattern.test(startTime) || !timePattern.test(endTime)) {
+      if (
+        !timePattern.test(startTime) ||
+        !timePattern.test(endTime)
+      ) {
         res.status(400).json({
           success: false,
           message: "Please provide valid start and end times",
@@ -98,8 +140,13 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
-      const [startHour, startMinute] = startTime.split(":").map(Number);
-      const [endHour, endMinute] = endTime.split(":").map(Number);
+      const [startHour, startMinute] = startTime
+        .split(":")
+        .map(Number);
+
+      const [endHour, endMinute] = endTime
+        .split(":")
+        .map(Number);
 
       const startMinutes = startHour * 60 + startMinute;
       const endMinutes = endHour * 60 + endMinute;
@@ -112,6 +159,7 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
+      // Validate number of guests
       if (!Number.isInteger(guests) || guests < 1) {
         res.status(400).json({
           success: false,
@@ -136,6 +184,7 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
+      // Check studio availability
       if (studio.status !== "available") {
         res.status(400).json({
           success: false,
@@ -144,6 +193,7 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
+      // Prevent owners from booking their own studios
       if (studio.ownerId === user.id) {
         res.status(400).json({
           success: false,
@@ -152,6 +202,7 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
+      // Check maximum studio capacity
       if (guests > studio.capacity) {
         res.status(400).json({
           success: false,
@@ -162,9 +213,11 @@ export function createBookingRouter(auth: Auth) {
 
       // Calculate booking duration and price using database values
       const durationHours = (endMinutes - startMinutes) / 60;
-      const totalPrice = durationHours * studio.price;
-      const securityDeposit = studio.securityDeposit;
 
+      const totalPrice = durationHours * studio.price;
+      const securityDeposit = studio.securityDeposit ?? 0;
+
+      // Prepare booking information
       const booking = {
         studioId: new ObjectId(studioId),
         studioName: studio.name,
@@ -191,6 +244,7 @@ export function createBookingRouter(auth: Auth) {
         createdAt: new Date(),
       };
 
+      // Save booking in MongoDB
       const result = await db.collection("bookings").insertOne(booking);
 
       res.status(201).json({
