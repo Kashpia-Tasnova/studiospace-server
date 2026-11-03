@@ -13,7 +13,11 @@ export async function createAuth() {
 
     secret: process.env.BETTER_AUTH_SECRET,
 
-    trustedOrigins: ["http://localhost:3000"],
+    // Allow local development and production Vercel website
+    trustedOrigins: [
+      "http://localhost:3000",
+      "https://studiospace-client-gray.vercel.app",
+    ],
 
     emailAndPassword: {
       enabled: true,

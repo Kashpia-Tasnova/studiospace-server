@@ -14,10 +14,15 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// CORS configuration
+// Allow both local development and the deployed website
+const allowedOrigins = [
+  "http://localhost:3000",
+  "https://studiospace-client-gray.vercel.app",
+];
+
 app.use(
   cors({
-    origin: "http://localhost:3000",
+    origin: allowedOrigins,
     credentials: true,
   })
 );
@@ -46,18 +51,18 @@ async function startServer() {
     // Parse incoming JSON requests
     app.use(express.json());
 
-    // Studio routes with Better Auth session verification
+    // Studio routes
     app.use("/api/studios", createStudioRouter(auth));
 
-    // Image upload routes with Better Auth session verification
+    // Image upload routes
     app.use("/api/upload", createUploadRouter(auth));
 
-    // Booking routes with Better Auth session verification
+    // Booking routes
     app.use("/api/bookings", createBookingRouter(auth));
 
     // Start Express server
     app.listen(PORT, () => {
-      console.log(`StudioSpace API is running on http://localhost:${PORT}`);
+      console.log(`StudioSpace API is running on port ${PORT}`);
       console.log("Better Auth is ready!");
       console.log("Studio routes are ready!");
       console.log("Upload routes are ready!");
