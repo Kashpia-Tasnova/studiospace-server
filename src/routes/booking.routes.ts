@@ -211,6 +211,31 @@ export function createBookingRouter(auth: Auth) {
         return;
       }
 
+      // Prevent overlapping bookings for the same studio and date.
+      // Cancelled bookings are excluded from this check.
+      const conflictingBooking = await db.collection("bookings").findOne({
+        studioId: new ObjectId(studioId),
+        bookingDate,
+        status: {
+          $in: ["Pending", "Confirmed"],
+        },
+        startTime: {
+          $lt: endTime,
+        },
+        endTime: {
+          $gt: startTime,
+        },
+      });
+
+      if (conflictingBooking) {
+        res.status(409).json({
+          success: false,
+          message:
+            "This studio is already booked during the selected time. Please choose another time slot.",
+        });
+        return;
+      }
+
       // Calculate booking duration and price using database values
       const durationHours = (endMinutes - startMinutes) / 60;
 
