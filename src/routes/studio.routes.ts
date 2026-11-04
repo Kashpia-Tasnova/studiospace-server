@@ -6,6 +6,58 @@ import type { createAuth } from "../auth";
 
 type Auth = Awaited<ReturnType<typeof createAuth>>;
 
+// Calculate genuine customer ratings for studio listings
+async function attachStudioRatings<
+  T extends { _id: ObjectId }
+>(studios: T[]) {
+  if (studios.length === 0) {
+    return [];
+  }
+
+  const ratingResults = await getDB()
+    .collection("reviews")
+    .aggregate<{
+      _id: ObjectId;
+      averageRating: number;
+      reviewCount: number;
+    }>([
+      {
+        $match: {
+          studioId: {
+            $in: studios.map((studio) => studio._id),
+          },
+        },
+      },
+      {
+        $group: {
+          _id: "$studioId",
+          averageRating: { $avg: "$rating" },
+          reviewCount: { $sum: 1 },
+        },
+      },
+    ])
+    .toArray();
+
+  const ratingMap = new Map(
+    ratingResults.map((item) => [
+      item._id.toString(),
+      item,
+    ])
+  );
+
+  return studios.map((studio) => {
+    const rating = ratingMap.get(studio._id.toString());
+
+    return {
+      ...studio,
+      rating: rating
+        ? Math.round(rating.averageRating * 10) / 10
+        : null,
+      reviewCount: rating?.reviewCount ?? 0,
+    };
+  });
+}
+
 export function createStudioRouter(auth: Auth) {
   const router = Router();
 
@@ -52,17 +104,19 @@ export function createStudioRouter(auth: Auth) {
     }
   }
 
-  // GET all studio listings
+  // GET all studio listings with actual customer ratings
   router.get("/", async (req, res) => {
     try {
       const db = getDB();
 
       const studios = await db.collection("studios").find({}).toArray();
 
+      const studiosWithRatings = await attachStudioRatings(studios);
+
       res.status(200).json({
         success: true,
         message: "Studios retrieved successfully",
-        data: studios,
+        data: studiosWithRatings,
       });
     } catch (error) {
       console.error("Error fetching studios:", error);
@@ -75,6 +129,7 @@ export function createStudioRouter(auth: Auth) {
   });
 
   // GET the 6 newest available studios for the homepage
+  // Includes actual customer ratings
   router.get("/featured", async (req, res) => {
     try {
       const db = getDB();
@@ -86,10 +141,12 @@ export function createStudioRouter(auth: Auth) {
         .limit(6)
         .toArray();
 
+      const studiosWithRatings = await attachStudioRatings(studios);
+
       res.status(200).json({
         success: true,
         message: "Featured studios retrieved successfully",
-        data: studios,
+        data: studiosWithRatings,
       });
     } catch (error) {
       console.error("Error fetching featured studios:", error);
@@ -102,6 +159,7 @@ export function createStudioRouter(auth: Auth) {
   });
 
   // GET all studio listings belonging to the logged-in user
+  // Includes actual customer ratings
   router.get("/my-listings", requireAuth, async (req, res) => {
     try {
       const user = res.locals.user;
@@ -113,10 +171,12 @@ export function createStudioRouter(auth: Auth) {
         .sort({ createdAt: -1 })
         .toArray();
 
+      const studiosWithRatings = await attachStudioRatings(studios);
+
       res.status(200).json({
         success: true,
         message: "Your studio listings retrieved successfully",
-        data: studios,
+        data: studiosWithRatings,
       });
     } catch (error) {
       console.error("Error fetching user's studio listings:", error);
@@ -128,7 +188,7 @@ export function createStudioRouter(auth: Auth) {
     }
   });
 
-  // GET a single studio by ID
+  // GET a single studio by ID with its actual customer rating
   router.get("/:id", async (req, res) => {
     try {
       const id = req.params.id;
@@ -155,10 +215,12 @@ export function createStudioRouter(auth: Auth) {
         return;
       }
 
+      const [studioWithRating] = await attachStudioRatings([studio]);
+
       res.status(200).json({
         success: true,
         message: "Studio retrieved successfully",
-        data: studio,
+        data: studioWithRating,
       });
     } catch (error) {
       console.error("Error fetching studio:", error);
@@ -289,6 +351,8 @@ export function createStudioRouter(auth: Auth) {
         data: {
           _id: result.insertedId,
           ...newStudio,
+          rating: null,
+          reviewCount: 0,
         },
       });
     } catch (error) {

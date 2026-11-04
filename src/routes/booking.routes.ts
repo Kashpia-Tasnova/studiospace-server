@@ -475,7 +475,7 @@ export function createBookingRouter(auth: Auth) {
     }
   });
 
-  // Customer cancels their own Pending, Confirmed, or Completed booking
+  // Customer cancels their own Pending, Confirmed booking
   router.patch("/:id/cancel", requireAuth, async (req, res) => {
     try {
       const id = req.params.id;
@@ -497,7 +497,7 @@ export function createBookingRouter(auth: Auth) {
           _id: bookingId,
           customerId: user.id,
           status: {
-            $in: ["Pending", "Confirmed", "Completed"],
+            $in: ["Pending", "Confirmed"],
           },
         },
         {
