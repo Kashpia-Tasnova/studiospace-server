@@ -1,10 +1,11 @@
-
 import { getDB } from "./db";
 
 export async function createAuth() {
   const { betterAuth } = await import("better-auth");
   const { mongodbAdapter } = await import("better-auth/adapters/mongodb");
   const { jwt } = await import("better-auth/plugins");
+
+  const isProduction = process.env.NODE_ENV === "production";
 
   return betterAuth({
     database: mongodbAdapter(getDB()),
@@ -13,11 +14,18 @@ export async function createAuth() {
 
     secret: process.env.BETTER_AUTH_SECRET,
 
-    // Allow local development and production Vercel website
     trustedOrigins: [
       "http://localhost:3000",
       "https://studiospace-client-gray.vercel.app",
     ],
+
+    advanced: {
+      defaultCookieAttributes: {
+        sameSite: isProduction ? "none" : "lax",
+        secure: isProduction,
+        httpOnly: true,
+      },
+    },
 
     emailAndPassword: {
       enabled: true,
